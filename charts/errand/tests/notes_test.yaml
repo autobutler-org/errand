@@ -9,4 +9,4 @@ tests:
         - label: arm
     asserts:
       - matchRegexRaw:
-          pattern: "runs-on labels: x64, arm"
+          pattern: "runs-on labels: errand-x64, errand-arm"

@@ -30,7 +30,7 @@ tests:
           count: 4
       - equal:
           path: metadata.name
-          value: x64
+          value: errand-x64
         documentSelector: &ars
           path: kind
           value: AutoscalingRunnerSet
@@ -40,7 +40,7 @@ tests:
             githubConfigUrl: https://github.com/autobutler-org
             githubConfigSecret: github-app-private-key
             runnerGroup: errand
-            runnerScaleSetName: x64
+            runnerScaleSetName: errand-x64
             minRunners: 0
             maxRunners: 100
             listenerConfig:
@@ -53,7 +53,7 @@ tests:
                   limits: { cpu: 3500m, memory: 10Gi }
                   requests: { cpu: 3500m, memory: 10Gi }
                 restartPolicy: Never
-                serviceAccountName: x64-gha-rs-no-permission
+                serviceAccountName: errand-x64-gha-rs-no-permission
                 initContainers:
                   - name: init-dind-externals
                     image: ghcr.io/actions/actions-runner:2.338.2
@@ -101,14 +101,14 @@ tests:
           path: subjects
           value:
             - kind: ServiceAccount
-              name: errand-gha-rs-controller
+              name: errand-controller
               namespace: ci-runners
         documentSelector:
           path: kind
           value: RoleBinding
       - equal:
           path: metadata.name
-          value: x64-gha-rs-no-permission
+          value: errand-x64-gha-rs-no-permission
         documentSelector:
           path: kind
           value: ServiceAccount
@@ -154,13 +154,13 @@ tests:
             requests: { cpu: 875m, memory: 2.5Gi }
         documentSelector:
           path: metadata.name
-          value: small
+          value: errand-small
       - equal:
           path: spec.template.spec.resources.requests
           value: { cpu: 500m, memory: 2.5Gi }
         documentSelector:
           path: metadata.name
-          value: pinned
+          value: errand-pinned
 
   - it: maps arch to the kubernetes.io/arch nodeSelector
     template: templates/runners.yaml
@@ -257,26 +257,26 @@ tests:
           path: spec.template.spec.nodeSelector
         documentSelector:
           path: metadata.name
-          value: x64
+          value: errand-x64
       - equal:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/actions/actions-runner:2.338.2
         documentSelector:
           path: metadata.name
-          value: x64
+          value: errand-x64
       - equal:
           path: spec.runnerScaleSetName
-          value: arm
+          value: errand-arm
         documentSelector:
           path: metadata.name
-          value: arm
+          value: errand-arm
       # Each runner renders ServiceAccount, Role, RoleBinding, AutoscalingRunnerSet.
       - isKind:
           of: RoleBinding
         documentIndex: 6
       - equal:
           path: roleRef.name
-          value: arm-gha-rs-manager
+          value: errand-arm-gha-rs-manager
         documentIndex: 6
 
   - it: rejects container modes the chart does not render
@@ -299,3 +299,36 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: github.secret must name an existing Secret
+
+  - it: rejects a label that already carries the errand- prefix
+    template: templates/runners.yaml
+    set:
+      runners:
+        - label: errand-x64
+    asserts:
+      - failedTemplate:
+          errorPattern: "label errand-x64 already starts with errand-; write x64, the chart adds the prefix"
+
+  - it: prefixes every name with errand- whatever the release is called
+    release:
+      name: foo
+    set:
+      runners:
+        - label: x64
+    asserts:
+      - equal:
+          path: metadata.name
+          value: errand-controller
+        template: charts/gha-runner-scale-set-controller/templates/deployment.yaml
+      - equal:
+          path: subjects[0].name
+          value: errand-controller
+        template: templates/runners.yaml
+        documentSelector:
+          path: kind
+          value: RoleBinding
+      - equal:
+          path: metadata.name
+          value: errand-x64
+        template: templates/runners.yaml
+        documentSelector: *ars

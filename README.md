@@ -30,7 +30,7 @@ defaults:                          # every runner starts from these
       - { key: CriticalAddonsOnly, operator: Equal, value: "true", effect: NoSchedule }
 
 runners:
-  - label: arm-small-quark-backend # scale set name and runs-on label
+  - label: arm-small-quark-backend # renders errand-arm-small-quark-backend
     arch: arm64                    # kubernetes.io/arch nodeSelector
     image: autobutlerci.azurecr.io/quark/ci-backend:latest
     resources:
@@ -40,6 +40,12 @@ gha-runner-scale-set-controller:   # passed through to the controller chart
   tolerations:
     - { key: CriticalAddonsOnly, operator: Equal, value: "true", effect: NoSchedule }
 ```
+
+Everything the chart renders is named `errand-...`. Each runner's scale set, and so its
+`runs-on` label, is `errand-<label>`: the entry above is used with
+`runs-on: errand-arm-small-quark-backend`. Write labels without the prefix; the chart adds
+it and rejects a label that already has it. The controller is `errand-controller` whatever
+the release is called (`fullnameOverride` in the controller values).
 
 Each runner is `defaults` deep-merged with its entry: maps merge key by key, lists and
 scalars replace. The scale-set templates are copied from upstream `gha-runner-scale-set`
