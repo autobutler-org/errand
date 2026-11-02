@@ -6,8 +6,9 @@ GitHub's [Actions Runner Controller](https://github.com/actions/actions-runner-c
 
 ## Usage
 
-Run `make help` for the targets. `make tools` downloads the pinned helm and kubeconform
-into `bin/`; `make check` lints and validates the chart, and CI runs the same thing.
+Run `make help` for the targets. `make tools` downloads the pinned helm, kubeconform and
+helm-unittest into `bin/`; `make check` lints the chart, validates the rendered manifests
+(ARC's CRDs included) and runs the unit tests in `charts/errand/tests/`. CI runs the same thing.
 `make doctor` reports anything missing and how to fix it.
 
 ## Releasing
