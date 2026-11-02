@@ -1,3 +1,45 @@
----
-# Placeholder: values arrive with the chart templates.
-{}
+# Values for the ARC controller chart pass through unchanged.
+# https://github.com/actions/actions-runner-controller/blob/master/charts/gha-runner-scale-set-controller/values.yaml
+gha-runner-scale-set-controller: {}
+
+# Shared by every runner scale set.
+github:
+  # Organization or repository URL the runners register with.
+  configUrl: ""
+  # Name of an existing Secret in the release namespace holding the GitHub App
+  # (github_app_id, github_app_installation_id, github_app_private_key) or a
+  # github_token.
+  secret: ""
+  # Runner group. Empty means the Default group.
+  runnerGroup: ""
+
+# Every runner starts from these and layers its own fields on top. Maps merge
+# key by key; lists and scalars from the runner replace the default.
+defaults:
+  image: ghcr.io/actions/actions-runner:2.338.2
+  # Set on the pod, not the runner container, so the runner and the dind
+  # sidecar share it and the scheduler counts both. Requests default to limits.
+  resources:
+    limits:
+      cpu: 3500m
+      memory: 10Gi
+  minRunners: 0
+  maxRunners: 100
+  # dind, or "" for upstream's default mode. Kubernetes mode is not supported.
+  containerMode: dind
+  # Raw runner pod spec: nodeSelector, tolerations, volumes, and so on.
+  pod: {}
+  # Raw runner container: env, volumeMounts, imagePullPolicy, command, and so on.
+  container: {}
+  # Raw listener pod spec, such as tolerations. Empty leaves the listener to
+  # the controller's defaults.
+  listener: {}
+
+# One runner scale set per entry. label is the scale set name and the runs-on
+# label. arch, when set, becomes the kubernetes.io/arch nodeSelector.
+#   - label: arm-small-quark-backend
+#     arch: arm64
+#     image: autobutlerci.azurecr.io/quark/ci-backend:latest
+#     resources:
+#       limits: { cpu: 875m, memory: 2.5Gi }
+runners: []

@@ -1,0 +1,55 @@
+{{- /*
+One upstream gha-runner-scale-set per entry in runners. Each runner becomes the
+values upstream would get, then the vendored templates in _gha-rs-resources.tpl
+render it. The controller service account comes from the controller subchart's
+own helpers, so no lookup is needed.
+*/}}
+{{- $controller := index .Values "gha-runner-scale-set-controller" }}
+{{- $controllerContext := dict "Values" $controller "Release" .Release }}
+{{- $controllerServiceAccount := dict
+  "name" (include "gha-runner-scale-set-controller.serviceAccountName" $controllerContext)
+  "namespace" (include "gha-runner-scale-set-controller.namespace" $controllerContext) }}
+{{- $arc := (index .Subcharts "gha-runner-scale-set-controller").Chart }}
+{{- if not (kindIs "string" .Values.github.secret) }}
+{{- fail "github.secret must name an existing Secret" }}
+{{- end }}
+{{- range $runner := .Values.runners }}
+{{- $r := mergeOverwrite (deepCopy $.Values.defaults) (deepCopy $runner) }}
+{{- if not (has $r.containerMode (list "dind" "")) }}
+{{- fail (printf "runner %s: containerMode must be dind or empty" $r.label) }}
+{{- end }}
+{{- $limits := default dict $r.resources.limits }}
+{{- $spec := dict "resources" (dict "limits" $limits "requests" (merge (default dict $r.resources.requests) $limits)) }}
+{{- with $r.arch }}
+{{- $_ := set $spec "nodeSelector" (dict "kubernetes.io/arch" .) }}
+{{- end }}
+{{- $spec = mergeOverwrite $spec $r.pod }}
+{{- $container := mergeOverwrite (dict "name" "runner" "image" $r.image "command" (list "/home/runner/run.sh")) $r.container }}
+{{- $_ := set $spec "containers" (prepend (default list $spec.containers) $container) }}
+{{- $values := dict
+  "githubConfigUrl" $.Values.github.configUrl
+  "githubConfigSecret" $.Values.github.secret
+  "runnerGroup" $.Values.github.runnerGroup
+  "runnerScaleSetName" (required "every runner needs a label" $r.label)
+  "minRunners" $r.minRunners
+  "maxRunners" $r.maxRunners
+  "containerMode" (dict "type" $r.containerMode)
+  "controllerServiceAccount" $controllerServiceAccount
+  "listenerConfig" (dict "scaler" (dict "qps" 50 "burst" 100))
+  "template" (dict "spec" $spec) }}
+{{- /* listenerConfig above is upstream's values.yaml default. */}}
+{{- with $r.listener }}
+{{- /* The CRD needs a container here; the image follows the controller. */}}
+{{- $image := printf "%s:%s" $controller.image.repository (default $arc.AppVersion $controller.image.tag) }}
+{{- $_ := set $values "listenerTemplate" (dict "spec" (mergeOverwrite (dict "containers" (list (dict "name" "listener" "image" $image))) .)) }}
+{{- end }}
+{{- $context := dict "Values" $values "Release" $.Release "Chart" $arc "Capabilities" $.Capabilities }}
+---
+{{ include "errand.gha-rs.no_permission_serviceaccount" $context }}
+---
+{{ include "errand.gha-rs.manager_role" $context }}
+---
+{{ include "errand.gha-rs.manager_role_binding" $context }}
+---
+{{ include "errand.gha-rs.autoscalingrunnerset" $context }}
+{{- end }}

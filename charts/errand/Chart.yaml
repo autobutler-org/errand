@@ -5,3 +5,9 @@ description: Self-hosted GitHub Actions runners for autobutler-org, built on Act
 type: application
 version: 0.1.0
 appVersion: "0.15.1"
+dependencies:
+  # Keep appVersion equal to this version: make drift compares against the
+  # gha-runner-scale-set chart of the same ARC release.
+  - name: gha-runner-scale-set-controller
+    version: 0.15.1
+    repository: oci://ghcr.io/actions/actions-runner-controller-charts

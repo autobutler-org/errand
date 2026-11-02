@@ -1,0 +1,46 @@
+# One runner shaped like autobutler-org/iac's arm-small-quark-backend. make
+# lint, validate and drift render with it; drift/upstream-values.yaml is the
+# same runner in upstream gha-runner-scale-set's terms.
+gha-runner-scale-set-controller:
+  tolerations: &system
+    - key: CriticalAddonsOnly
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+
+github:
+  configUrl: https://github.com/autobutler-org
+  secret: github-app-private-key
+  runnerGroup: errand
+
+defaults:
+  pod:
+    nodeSelector:
+      ci.autobutler.org/runner: "true"
+    tolerations:
+      - key: ci.autobutler.org/runner
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+    volumes:
+      - name: acr-login
+        configMap:
+          name: acr-login
+          defaultMode: 0755
+  container:
+    imagePullPolicy: Always
+    env:
+      - name: ACTIONS_RUNNER_HOOK_JOB_STARTED
+        value: /home/runner/hooks/acr-login.sh
+    volumeMounts:
+      - name: acr-login
+        mountPath: /home/runner/hooks
+  listener:
+    tolerations: *system
+
+runners:
+  - label: arm-small-quark-backend
+    arch: arm64
+    image: autobutlerci.azurecr.io/quark/ci-backend:latest
+    resources:
+      limits: { cpu: 875m, memory: 2.5Gi }

@@ -1,1 +1,4 @@
-errand is a placeholder chart; runner resources arrive in a later release.
+errand installed the Actions Runner Controller and {{ len .Values.runners }} runner scale set(s).
+{{- with .Values.runners }}
+runs-on labels: {{ range $i, $r := . }}{{ if $i }}, {{ end }}{{ $r.label }}{{ end }}
+{{- end }}

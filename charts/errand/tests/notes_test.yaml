@@ -2,7 +2,11 @@ suite: notes
 templates:
   - templates/NOTES.txt
 tests:
-  - it: renders the placeholder notes
+  - it: lists the runner labels
+    set:
+      runners:
+        - label: x64
+        - label: arm
     asserts:
       - matchRegexRaw:
-          pattern: placeholder chart
+          pattern: "runs-on labels: x64, arm"
