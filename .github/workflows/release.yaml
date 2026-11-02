@@ -1,0 +1,29 @@
+---
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify tag matches Chart.yaml version
+        run: |
+          version="$(awk '/^version:/ {print $2}' charts/errand/Chart.yaml)"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match Chart.yaml version ${version}; bump Chart.yaml or retag v${version}"
+            exit 1
+          fi
+      - run: make tools
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "${GITHUB_TOKEN}" | bin/helm registry login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+      - run: make package push
