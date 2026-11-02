@@ -23,6 +23,10 @@ KUBECONFORM := bin/kubeconform
 # Plugins live under bin/ so nothing in the user's own helm setup is touched.
 export HELM_PLUGINS := $(CURDIR)/bin/plugins
 HELM_UNITTEST := $(HELM_PLUGINS)/unittest
+# One realistic runner; lint, validate and drift render with it.
+CI_VALUES := $(CHART)/ci/values.yaml
+ARC_VERSION := $(shell awk '/^appVersion:/ {gsub(/"/, "", $$2); print $$2}' $(CHART)/Chart.yaml)
+UPSTREAM := bin/gha-runner-scale-set-$(ARC_VERSION)/gha-runner-scale-set
 
 .PHONY: help tools doctor deps lint template validate test check package push clean
 
@@ -85,6 +89,7 @@ deps: $(HELM) ## fetch the chart's dependencies from Chart.lock
 
 lint: deps ## helm lint --strict the chart
 	$(HELM) lint --strict $(CHART)
+	$(HELM) lint --strict $(CHART) -f $(CI_VALUES)
 
 template: deps ## render the chart to stdout
 	@$(HELM) template errand $(CHART)
@@ -92,14 +97,27 @@ template: deps ## render the chart to stdout
 # ARC's CRDs come from the pinned catalog commit, so they are validated, not
 # skipped. A kind with no schema anywhere fails rather than slipping through.
 validate: deps $(KUBECONFORM) ## validate rendered manifests with kubeconform
-	$(HELM) template errand $(CHART) | $(KUBECONFORM) -strict -summary \
+	$(HELM) template errand $(CHART) -f $(CI_VALUES) | $(KUBECONFORM) -strict -summary \
 	  -schema-location default \
 	  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/$(CRDS_CATALOG_REF)/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
 test: deps $(HELM_UNITTEST) ## run the helm-unittest suites in charts/errand/tests
 	$(HELM) unittest $(CHART)
 
-check: lint validate test ## lint, validate and test (what CI runs)
+$(UPSTREAM)/Chart.yaml: | $(HELM)
+	$(HELM) pull oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set --version $(ARC_VERSION) --untar --untardir $(dir $(UPSTREAM))
+
+# Renders the CI runner through upstream gha-runner-scale-set and through this
+# chart, then diffs them. The Source comments and values-hash (a hash of each
+# side's own values) are dropped, and diff -B ignores the blank lines that
+# --show-only adds. Any other line is drift to look at.
+DRIFT_RENDER = $(HELM) template errand $(1) -n ci-runners -f $(2) | sed -e '/^\# Source: /d' -e '/actions.github.com\/values-hash: /d'
+drift: deps $(UPSTREAM)/Chart.yaml ## diff one runner against upstream gha-runner-scale-set
+	diff -uB <($(call DRIFT_RENDER,$(UPSTREAM),drift/upstream-values.yaml)) \
+	  <($(call DRIFT_RENDER,$(CHART) --show-only templates/runners.yaml,$(CI_VALUES)))
+	@echo "no drift from gha-runner-scale-set $(ARC_VERSION)"
+
+check: lint validate test drift ## lint, validate, test and diff against upstream (what CI runs)
 
 package: deps ## package the chart into dist/
 	$(HELM) package $(CHART) --destination dist

@@ -1,0 +1,301 @@
+suite: runners
+templates:
+  - templates/runners.yaml
+  - charts/gha-runner-scale-set-controller/templates/deployment.yaml
+release:
+  name: errand
+  namespace: ci-runners
+set:
+  github:
+    configUrl: https://github.com/autobutler-org
+    secret: github-app-private-key
+    runnerGroup: errand
+tests:
+  - it: renders only the controller when runners is empty
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/runners.yaml
+      - hasDocuments:
+          count: 1
+        template: charts/gha-runner-scale-set-controller/templates/deployment.yaml
+
+  - it: fills a label-only runner from defaults
+    template: templates/runners.yaml
+    set:
+      runners:
+        - label: x64
+    asserts:
+      - hasDocuments:
+          count: 4
+      - equal:
+          path: metadata.name
+          value: x64
+        documentSelector: &ars
+          path: kind
+          value: AutoscalingRunnerSet
+      - equal:
+          path: spec
+          value:
+            githubConfigUrl: https://github.com/autobutler-org
+            githubConfigSecret: github-app-private-key
+            runnerGroup: errand
+            runnerScaleSetName: x64
+            minRunners: 0
+            maxRunners: 100
+            listenerConfig:
+              scaler:
+                qps: 50
+                burst: 100
+            template:
+              spec:
+                resources:
+                  limits: { cpu: 3500m, memory: 10Gi }
+                  requests: { cpu: 3500m, memory: 10Gi }
+                restartPolicy: Never
+                serviceAccountName: x64-gha-rs-no-permission
+                initContainers:
+                  - name: init-dind-externals
+                    image: ghcr.io/actions/actions-runner:2.338.2
+                    command: ["cp"]
+                    args: ["-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+                    volumeMounts:
+                      - { name: dind-externals, mountPath: /home/runner/tmpDir }
+                  - name: dind
+                    image: docker:dind
+                    args:
+                      - dockerd
+                      - --host=unix:///var/run/docker.sock
+                      - --group=$(DOCKER_GROUP_GID)
+                    env:
+                      - { name: DOCKER_GROUP_GID, value: "123" }
+                    securityContext:
+                      privileged: true
+                    restartPolicy: Always
+                    startupProbe:
+                      exec:
+                        command: [docker, info]
+                      initialDelaySeconds: 0
+                      failureThreshold: 24
+                      periodSeconds: 5
+                    volumeMounts:
+                      - { name: work, mountPath: /home/runner/_work }
+                      - { name: dind-sock, mountPath: /var/run }
+                      - { name: dind-externals, mountPath: /home/runner/externals }
+                containers:
+                  - name: runner
+                    command: [/home/runner/run.sh]
+                    image: ghcr.io/actions/actions-runner:2.338.2
+                    env:
+                      - { name: DOCKER_HOST, value: "unix:///var/run/docker.sock" }
+                      - { name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS, value: "120" }
+                    volumeMounts:
+                      - { name: work, mountPath: /home/runner/_work }
+                      - { name: dind-sock, mountPath: /var/run }
+                volumes:
+                  - { name: dind-sock, emptyDir: {} }
+                  - { name: dind-externals, emptyDir: {} }
+                  - { name: work, emptyDir: {} }
+        documentSelector: *ars
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: errand-gha-rs-controller
+              namespace: ci-runners
+        documentSelector:
+          path: kind
+          value: RoleBinding
+      - equal:
+          path: metadata.name
+          value: x64-gha-rs-no-permission
+        documentSelector:
+          path: kind
+          value: ServiceAccount
+
+  - it: lets a runner override the defaults, including with zero
+    template: templates/runners.yaml
+    set:
+      defaults:
+        minRunners: 1
+      runners:
+        - label: arm-small-quark-backend
+          image: autobutlerci.azurecr.io/quark/ci-backend:latest
+          minRunners: 0
+          maxRunners: 5
+    documentSelector: *ars
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: autobutlerci.azurecr.io/quark/ci-backend:latest
+      - equal:
+          path: spec.minRunners
+          value: 0
+      - equal:
+          path: spec.maxRunners
+          value: 5
+
+  - it: defaults requests to limits, key by key
+    template: templates/runners.yaml
+    set:
+      runners:
+        - label: small
+          resources:
+            limits: { cpu: 875m, memory: 2.5Gi }
+        - label: pinned
+          resources:
+            limits: { cpu: 875m, memory: 2.5Gi }
+            requests: { cpu: 500m }
+    asserts:
+      - equal:
+          path: spec.template.spec.resources
+          value:
+            limits: { cpu: 875m, memory: 2.5Gi }
+            requests: { cpu: 875m, memory: 2.5Gi }
+        documentSelector:
+          path: metadata.name
+          value: small
+      - equal:
+          path: spec.template.spec.resources.requests
+          value: { cpu: 500m, memory: 2.5Gi }
+        documentSelector:
+          path: metadata.name
+          value: pinned
+
+  - it: maps arch to the kubernetes.io/arch nodeSelector
+    template: templates/runners.yaml
+    set:
+      runners:
+        - label: arm
+          arch: arm64
+    documentSelector: *ars
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value:
+            kubernetes.io/arch: arm64
+
+  - it: merges the pod, container and listener escape hatches
+    template: templates/runners.yaml
+    set:
+      defaults:
+        pod:
+          nodeSelector:
+            ci.autobutler.org/runner: "true"
+          tolerations:
+            - { key: ci.autobutler.org/runner, operator: Equal, value: "true", effect: NoSchedule }
+          volumes:
+            - name: acr-login
+              configMap: { name: acr-login, defaultMode: 0755 }
+        container:
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: ACTIONS_RUNNER_HOOK_JOB_STARTED, value: /home/runner/hooks/acr-login.sh }
+          volumeMounts:
+            - { name: acr-login, mountPath: /home/runner/hooks }
+        listener:
+          tolerations:
+            - { key: CriticalAddonsOnly, operator: Equal, value: "true", effect: NoSchedule }
+      runners:
+        - label: arm-small-quark-backend
+          arch: arm64
+          container:
+            imagePullPolicy: Always
+    documentSelector: *ars
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value:
+            ci.autobutler.org/runner: "true"
+            kubernetes.io/arch: arm64
+      - equal:
+          path: spec.template.spec.tolerations
+          value:
+            - { key: ci.autobutler.org/runner, operator: Equal, value: "true", effect: NoSchedule }
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: acr-login
+            configMap: { name: acr-login, defaultMode: 493 }
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value: [/home/runner/run.sh]
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: ACTIONS_RUNNER_HOOK_JOB_STARTED, value: /home/runner/hooks/acr-login.sh }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DOCKER_HOST, value: "unix:///var/run/docker.sock" }
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: { name: acr-login, mountPath: /home/runner/hooks }
+      - equal:
+          path: spec.listenerTemplate
+          value:
+            spec:
+              containers:
+                - name: listener
+                  image: ghcr.io/actions/gha-runner-scale-set-controller:0.15.1
+              tolerations:
+                - { key: CriticalAddonsOnly, operator: Equal, value: "true", effect: NoSchedule }
+
+  - it: renders two runners as two independent sets
+    template: templates/runners.yaml
+    set:
+      runners:
+        - label: x64
+        - label: arm
+          arch: arm64
+          image: example.com/arm:1
+    asserts:
+      - hasDocuments:
+          count: 8
+      - notExists:
+          path: spec.template.spec.nodeSelector
+        documentSelector:
+          path: metadata.name
+          value: x64
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/actions/actions-runner:2.338.2
+        documentSelector:
+          path: metadata.name
+          value: x64
+      - equal:
+          path: spec.runnerScaleSetName
+          value: arm
+        documentSelector:
+          path: metadata.name
+          value: arm
+      # Each runner renders ServiceAccount, Role, RoleBinding, AutoscalingRunnerSet.
+      - isKind:
+          of: RoleBinding
+        documentIndex: 6
+      - equal:
+          path: roleRef.name
+          value: arm-gha-rs-manager
+        documentIndex: 6
+
+  - it: rejects container modes the chart does not render
+    template: templates/runners.yaml
+    set:
+      runners:
+        - label: k8s
+          containerMode: kubernetes
+    asserts:
+      - failedTemplate:
+          errorPattern: containerMode must be dind or empty
+
+  - it: rejects an inline GitHub secret
+    template: templates/runners.yaml
+    set:
+      github.secret:
+        github_token: abc
+      runners:
+        - label: x64
+    asserts:
+      - failedTemplate:
+          errorPattern: github.secret must name an existing Secret
