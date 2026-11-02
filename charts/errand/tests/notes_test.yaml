@@ -1,0 +1,8 @@
+suite: notes
+templates:
+  - templates/NOTES.txt
+tests:
+  - it: renders the placeholder notes
+    asserts:
+      - matchRegexRaw:
+          pattern: placeholder chart
