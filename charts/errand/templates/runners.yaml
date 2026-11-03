@@ -2,7 +2,8 @@
 One upstream gha-runner-scale-set per entry in runners. Each runner becomes the
 values upstream would get, then the vendored templates in _gha-rs-resources.tpl
 render it. The controller service account comes from the controller subchart's
-own helpers, so no lookup is needed.
+own helpers, so no lookup is needed. Every scale set is named errand-<label>,
+and that is also its runs-on label.
 */}}
 {{- $controller := index .Values "gha-runner-scale-set-controller" }}
 {{- $controllerContext := dict "Values" $controller "Release" .Release }}
@@ -15,8 +16,12 @@ own helpers, so no lookup is needed.
 {{- end }}
 {{- range $runner := .Values.runners }}
 {{- $r := mergeOverwrite (deepCopy $.Values.defaults) (deepCopy $runner) }}
+{{- $label := required "every runner needs a label" $r.label }}
+{{- if hasPrefix "errand-" $label }}
+{{- fail (printf "label %s already starts with errand-; write %s, the chart adds the prefix" $label (trimPrefix "errand-" $label)) }}
+{{- end }}
 {{- if not (has $r.containerMode (list "dind" "")) }}
-{{- fail (printf "runner %s: containerMode must be dind or empty" $r.label) }}
+{{- fail (printf "runner %s: containerMode must be dind or empty" $label) }}
 {{- end }}
 {{- $limits := default dict $r.resources.limits }}
 {{- $spec := dict "resources" (dict "limits" $limits "requests" (merge (default dict $r.resources.requests) $limits)) }}
@@ -30,7 +35,7 @@ own helpers, so no lookup is needed.
   "githubConfigUrl" $.Values.github.configUrl
   "githubConfigSecret" $.Values.github.secret
   "runnerGroup" $.Values.github.runnerGroup
-  "runnerScaleSetName" (required "every runner needs a label" $r.label)
+  "runnerScaleSetName" (printf "errand-%s" $label)
   "minRunners" $r.minRunners
   "maxRunners" $r.maxRunners
   "containerMode" (dict "type" $r.containerMode)

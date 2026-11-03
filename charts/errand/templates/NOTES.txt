@@ -1,4 +1,4 @@
 errand installed the Actions Runner Controller and {{ len .Values.runners }} runner scale set(s).
 {{- with .Values.runners }}
-runs-on labels: {{ range $i, $r := . }}{{ if $i }}, {{ end }}{{ $r.label }}{{ end }}
+runs-on labels: {{ range $i, $r := . }}{{ if $i }}, {{ end }}errand-{{ $r.label }}{{ end }}
 {{- end }}

@@ -1,6 +1,9 @@
 # Values for the ARC controller chart pass through unchanged.
 # https://github.com/actions/actions-runner-controller/blob/master/charts/gha-runner-scale-set-controller/values.yaml
-gha-runner-scale-set-controller: {}
+gha-runner-scale-set-controller:
+  # Names the controller and everything it creates errand-controller*,
+  # whatever the release is called.
+  fullnameOverride: errand-controller
 
 # Shared by every runner scale set.
 github:
@@ -35,8 +38,9 @@ defaults:
   # the controller's defaults.
   listener: {}
 
-# One runner scale set per entry. label is the scale set name and the runs-on
-# label. arch, when set, becomes the kubernetes.io/arch nodeSelector.
+# One runner scale set per entry, named errand-<label>. Jobs use
+# runs-on: errand-<label>. Write the label without the errand- prefix; the
+# chart adds it. arch, when set, becomes the kubernetes.io/arch nodeSelector.
 #   - label: arm-small-quark-backend
 #     arch: arm64
 #     image: autobutlerci.azurecr.io/quark/ci-backend:latest

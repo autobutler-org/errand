@@ -1,13 +1,14 @@
 # Upstream gha-runner-scale-set values for the runner in
 # charts/errand/ci/values.yaml, taken from autobutler-org/iac's
-# arm-small-quark-backend with requests spelled out and the controller service
-# account of an errand release named errand. make drift renders both and diffs.
+# arm-small-quark-backend with requests spelled out, and with the errand- names
+# this chart gives the scale set and controller service account. make drift
+# renders both and diffs.
 githubConfigUrl: https://github.com/autobutler-org
 githubConfigSecret: github-app-private-key
-runnerScaleSetName: arm-small-quark-backend
+runnerScaleSetName: errand-arm-small-quark-backend
 runnerGroup: errand
 controllerServiceAccount:
-  name: errand-gha-rs-controller
+  name: errand-controller
   namespace: ci-runners
 minRunners: 0
 maxRunners: 100
