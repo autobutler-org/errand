@@ -5,7 +5,7 @@ SHELL := bash
 .DELETE_ON_ERROR:
 
 # renovate: datasource=github-releases depName=helm/helm
-HELM_VERSION := v4.3.1
+HELM_VERSION := v4.3.2
 # renovate: datasource=github-releases depName=yannh/kubeconform
 KUBECONFORM_VERSION := v0.8.0
 # renovate: datasource=github-releases depName=helm-unittest/helm-unittest
