@@ -9,7 +9,7 @@ HELM_VERSION := v4.3.2
 # renovate: datasource=github-releases depName=yannh/kubeconform
 KUBECONFORM_VERSION := v0.8.0
 # renovate: datasource=github-releases depName=helm-unittest/helm-unittest
-HELM_UNITTEST_VERSION := v1.2.1
+HELM_UNITTEST_VERSION := v1.3.0
 # datreeio/CRDs-catalog commit with the actions.github.com CRDs from ARC 0.15.0,
 # the newest it carries. 0.15.1 only adds a few min/max bounds on top of them.
 CRDS_CATALOG_REF := c4b1316c2c97f15d376ab84594a1ad880a707eb7
